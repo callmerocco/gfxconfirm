@@ -1,307 +1,679 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
-<title>Roblox GFX Orders</title>
-<meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Elxexx's GFX Studio</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  
+  <!--
+  =========================
+  🔧 Setup Instructions
+  =========================
+  1) Create a Firebase project → Web app. Enable: Firestore, Authentication (Email/Password), Storage.
+  2) Replace the firebaseConfig object below with your own.
+  3) Create a Firestore collection named: orders
+  4) In Authentication, create an admin user (email+password). Use that to log in on /#/admin.
+  5) Security Rules (copy into Firestore Rules):
 
-<style>
-:root {
-  --bg: #0d0d11;
-  --card: rgba(255,255,255,0.05);
-  --accent: #1a7cff;
-  --danger: #e74c3c;
-  --text: #f1f1f1;
-  --muted: #aaa;
-  --radius: 14px;
-  --shadow: 0 8px 25px rgba(0,0,0,.4);
-}
+  rules_version = '2';
+  service cloud.firestore {
+    match /databases/{database}/documents {
+      // Public can create an order and read published gallery items
+      match /orders/{id} {
+        allow create: if request.resource.data.user is string
+                       && request.resource.data.usernameLower is string
+                       && request.resource.data.user.size() >= 2
+                       && request.resource.data.usernameLower == lower(request.resource.data.user)
+                       && request.resource.data.createdAt == request.time
+                       && request.resource.data.status == 'Pending';
+        allow read: if resource.data.published == true; // gallery & status (published only)
+        // Admin-only write/update/delete
+        allow update, delete, read: if request.auth != null && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+      }
+      match /admins/{uid} {
+        allow read, write: if request.auth != null && request.auth.uid == uid; // seed a doc for each admin uid
+      }
+    }
+  }
 
-* { box-sizing: border-box; }
-body {
-  margin: 0;
-  font-family: "Inter", "Segoe UI", sans-serif;
-  background: var(--bg);
-  color: var(--text);
-  line-height: 1.5;
-}
+  6) Storage Rules (so only admins can upload manage images):
+  rules_version = '2';
+  service firebase.storage {
+    match /b/{bucket}/o {
+      match /orders/{allPaths=**} {
+        allow read: if true; // gallery thumbnails are public
+        allow write, delete: if request.auth != null && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+      }
+    }
+  }
 
-header {
-  text-align: center;
-  padding: 30px 15px;
-  background: linear-gradient(120deg, #0f0f18, #121222);
-  box-shadow: var(--shadow);
-}
-header img {
-  max-width: 220px;
-  border-radius: var(--radius);
-  margin: 10px;
-  box-shadow: 0 5px 20px rgba(0,0,0,.6);
-  transition: transform .3s ease;
-}
-header img:hover { transform: scale(1.03); }
+  7) Optional: create /admins/{uid} docs for each admin. Simpler than custom claims.
+  8) (Optional) Create a composite index for orders(usernameLower, createdAt desc) if console prompts.
+  -->
 
-.wrap {
-  max-width: 1000px;
-  margin: auto;
-  padding: 25px;
-}
+  <style>
+    :root {
+      --bg: #0b0b10;
+      --panel: rgba(255,255,255,0.05);
+      --elev: rgba(255,255,255,0.08);
+      --accent: #1a7cff;
+      --accent-2: #5a5af7;
+      --danger: #ef4444;
+      --ok: #22c55e;
+      --text: #f5f7fb;
+      --muted: #aab0c0;
+      --ring: rgba(26,124,255,.35);
+      --radius: 16px;
+      --shadow: 0 10px 30px rgba(0,0,0,.45);
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0; font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      color: var(--text); background: radial-gradient(1200px 600px at 10% 0%, #0f1220 0%, #090a0f 45%, #06070a 100%);
+      line-height: 1.5;
+    }
+    a { color: var(--text); text-decoration: none; }
 
-/* Tabs */
-.nav {
-  display: flex;
-  gap: 10px;
-  margin-bottom: 25px;
-  justify-content: center;
-}
-.tab {
-  padding: 12px 20px;
-  background: var(--card);
-  border-radius: var(--radius);
-  cursor: pointer;
-  font-weight: 600;
-  color: var(--muted);
-  transition: all .25s ease;
-  backdrop-filter: blur(6px);
-}
-.tab:hover { color: var(--text); background: rgba(255,255,255,.1); }
-.tab.active { background: var(--accent); color: #fff; box-shadow: var(--shadow); }
+    /* Topbar */
+    .topbar {
+      position: sticky; top: 0; z-index: 50; backdrop-filter: blur(10px);
+      background: linear-gradient(180deg, rgba(7,8,12,.8), rgba(7,8,12,.55));
+      border-bottom: 1px solid rgba(255,255,255,.06);
+    }
+    .topwrap { max-width: 1200px; margin: 0 auto; padding: 14px 20px; display: grid; grid-template-columns: 220px 1fr 320px; gap: 14px; align-items: center; }
+    .brand { display: flex; align-items: center; gap: 10px; font-weight: 800; letter-spacing: .3px; }
+    .brand .logo { width: 36px; height: 36px; border-radius: 11px; background: linear-gradient(135deg, var(--accent), var(--accent-2)); box-shadow: 0 6px 20px rgba(26,124,255,.35); }
+    .nav { display: flex; gap: 12px; align-items: center; justify-content: center; }
+    .nav a { padding: 10px 14px; border-radius: 12px; color: #cfd6e6; font-weight: 600; }
+    .nav a.active, .nav a:hover { background: var(--panel); color: var(--text); }
+    .search { display: flex; align-items: center; gap: 8px; }
+    .search input {
+      width: 100%; padding: 12px 14px; border-radius: 12px; background: var(--panel); color: var(--text); border: 1px solid transparent;
+    }
+    .search input:focus { outline: none; border-color: var(--ring); box-shadow: 0 0 0 6px var(--ring); }
+    .btn { padding: 10px 14px; border-radius: 12px; border: none; cursor: pointer; font-weight: 700; }
+    .btn.primary { background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: #fff; box-shadow: 0 6px 20px rgba(90,90,247,.2); }
+    .btn.ghost { background: var(--panel); color: var(--text); }
+    .btn.danger { background: var(--danger); color: #fff; }
 
-/* Panels */
-.panel {
-  background: var(--card);
-  padding: 25px;
-  border-radius: var(--radius);
-  box-shadow: var(--shadow);
-  backdrop-filter: blur(12px);
-  animation: fadeIn .4s ease;
-}
-@keyframes fadeIn { from{opacity:0; transform:translateY(8px)} to{opacity:1; transform:translateY(0)} }
+    .container { max-width: 1100px; margin: 24px auto; padding: 0 20px 60px; }
 
-h2 { margin-top: 0; font-weight: 700; }
+    /* Hero */
+    .hero { display: grid; grid-template-columns: 1.3fr 1fr; gap: 24px; align-items: center; margin: 26px 0 34px; }
+    .card { background: var(--panel); border: 1px solid rgba(255,255,255,.06); border-radius: var(--radius); box-shadow: var(--shadow); }
+    .hero .card { padding: 28px; }
+    .headline { font-size: clamp(26px, 3.2vw, 48px); line-height: 1.06; margin: 0 0 10px; font-weight: 800; }
+    .subhead { color: var(--muted); font-weight: 500; margin-bottom: 18px; }
+    .cta { display: flex; gap: 10px; flex-wrap: wrap; }
 
-/* Inputs */
-label { display: block; margin: 15px 0 6px; font-weight: 500; }
-input, textarea {
-  width: 100%;
-  padding: 12px;
-  border-radius: var(--radius);
-  border: none;
-  background: rgba(255,255,255,.07);
-  color: var(--text);
-  font-size: 15px;
-  transition: background .2s;
-}
-input:focus, textarea:focus { background: rgba(255,255,255,.12); outline: none; }
+    .gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px,1fr)); gap: 14px; }
+    .thumb { position: relative; overflow: hidden; border-radius: 14px; border: 1px solid rgba(255,255,255,.06); }
+    .thumb img { width: 100%; height: 180px; object-fit: cover; display: block; filter: saturate(.96); transition: transform .35s ease; }
+    .thumb:hover img { transform: scale(1.04); }
+    .badge { position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,.6); padding: 6px 10px; border-radius: 999px; font-size: 12px; border: 1px solid rgba(255,255,255,.12); }
 
-textarea { min-height: 80px; resize: vertical; }
+    /* Panels & Forms */
+    .panel { padding: 22px; }
+    h2 { margin: 0 0 12px; font-weight: 800; }
+    label { display: block; margin: 14px 0 6px; font-weight: 600; }
+    input, textarea, select { width: 100%; padding: 12px 14px; border-radius: 12px; background: rgba(255,255,255,.07); color: var(--text); border: 1px solid rgba(255,255,255,.08); }
+    input:focus, textarea:focus, select:focus { outline: none; border-color: var(--ring); box-shadow: 0 0 0 6px var(--ring); }
+    textarea { min-height: 90px; resize: vertical; }
+    .help { color: var(--muted); font-size: 13px; margin-top: 6px; }
+    .notice { margin-top: 14px; background: rgba(90,90,247,.08); border: 1px solid rgba(90,90,247,.25); padding: 12px 14px; border-radius: 12px; }
 
-/* Buttons */
-button {
-  margin-top: 12px;
-  padding: 12px 20px;
-  border: none;
-  border-radius: var(--radius);
-  font-weight: 600;
-  cursor: pointer;
-  transition: transform .15s ease, background .2s;
-}
-button:hover { transform: translateY(-2px); }
-.primary { background: var(--accent); color: #fff; }
-.danger { background: var(--danger); color: #fff; }
+    /* Table */
+    .table { width: 100%; border-collapse: collapse; }
+    .table th, .table td { text-align: left; border-bottom: 1px solid rgba(255,255,255,.07); padding: 10px 8px; vertical-align: top; }
+    .table th { color: var(--muted); font-weight: 600; }
+    .row-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+    .status-input, .notes-input, .gfx-input { width: 100%; }
+    .progress { height: 8px; width: 100%; background: rgba(255,255,255,.08); border-radius: 999px; overflow: hidden; }
+    .progress > span { display: block; height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent-2)); width: 0%; transition: width .2s ease; }
 
-/* Notice */
-.notice {
-  margin-top: 15px;
-  padding: 12px;
-  border-radius: var(--radius);
-  background: rgba(255,255,255,.08);
-  font-size: 15px;
-  line-height: 1.4;
-}
+    /* Footer */
+    footer { color: var(--muted); text-align: center; padding: 24px; border-top: 1px solid rgba(255,255,255,.06); }
 
-/* Table */
-.table {
-  width: 100%;
-  border-collapse: collapse;
-  margin-top: 15px;
-}
-.table th, .table td {
-  padding: 12px;
-  border-bottom: 1px solid rgba(255,255,255,.08);
-  vertical-align: top;
-  font-size: 14px;
-}
-.table th { text-align: left; color: var(--muted); font-weight: 500; }
-.table td input, .table td textarea {
-  font-size: 14px;
-  padding: 8px;
-  border-radius: 8px;
-}
-.table tr:hover td { background: rgba(255,255,255,.04); }
-
-/* Admin boxes */
-.status-box, .notes-box {
-  width: 100%;
-  background: rgba(255,255,255,.07);
-  border: none;
-  border-radius: 8px;
-  color: var(--text);
-}
-</style>
+    @media (max-width: 960px) {
+      .topwrap { grid-template-columns: 1fr; }
+      .hero { grid-template-columns: 1fr; }
+    }
+  </style>
 </head>
 <body>
-<header>
-  <img src="data:image/jpeg;base64,PUT_FIRST_BASE64_HERE" alt="gfx1">
-  <img src="data:image/jpeg;base64,PUT_SECOND_BASE64_HERE" alt="gfx2">
-</header>
-
-<div class="wrap">
-  <div class="nav">
-    <div class="tab" data-tab="order">Confirm Order</div>
-    <div class="tab" data-tab="status">Check Status</div>
-    <div class="tab" data-tab="admin">Admin</div>
-  </div>
-
-  <!-- Order -->
-  <div id="order" class="panel">
-    <h2>Confirm Your GFX Order</h2>
-    <label>Roblox Username *</label>
-    <input id="orderUser">
-    <label>Notes</label>
-    <textarea id="orderNotes"></textarea>
-    <button class="primary" id="btnSubmit">Confirm Order</button>
-    <div id="orderMsg" class="notice" hidden></div>
-  </div>
-
-  <!-- Status -->
-  <div id="status" class="panel" hidden>
-    <h2>Check Your Status</h2>
-    <label>Roblox Username</label>
-    <input id="statusUser">
-    <button class="primary" id="btnCheck">Check</button>
-    <div id="statusResult" class="notice" hidden></div>
-  </div>
-
-  <!-- Admin -->
-  <div id="admin" class="panel" hidden>
-    <h2>Admin Panel</h2>
-    <div id="adminLogin">
-      <label>Enter PIN</label>
-      <input type="password" id="adminPin">
-      <button class="primary" id="btnAdminLogin">Unlock</button>
+  <header class="topbar">
+    <div class="topwrap">
+      <a class="brand" href="#/home" data-link>
+        <div class="logo"></div>
+        <div>Roblox GFX Studio</div>
+      </a>
+      <nav class="nav" id="navLinks">
+        <a href="#/order" data-link>Order</a>
+        <a href="#/status" data-link>Status</a>
+        <a href="#/gallery" data-link>Gallery</a>
+        <a href="#/faq" data-link>FAQ</a>
+        <a href="#/admin" data-link>Admin</a>
+      </nav>
+      <div class="search">
+        <input id="globalSearch" placeholder="Search username… (press Enter)" />
+        <button class="btn ghost" id="btnGlobalSearch">Search</button>
+      </div>
     </div>
-    <div id="adminBody" hidden>
-      <button class="danger" id="btnClear">Clear All</button>
-      <table class="table">
-        <thead>
-          <tr>
-            <th>User</th><th>User Notes</th><th>Status</th>
-            <th>Admin Notes</th><th>Save</th><th>Delete</th>
-          </tr>
-        </thead>
-        <tbody id="ordersBody"></tbody>
-      </table>
-    </div>
-  </div>
-</div>
+  </header>
 
-<script>
-const STORAGE_KEY="gfx_orders";
-const ADMIN_PIN="admin123"; // change this
+  <main class="container">
+    <section id="view"></section>
+  </main>
 
-function load(){return JSON.parse(localStorage.getItem(STORAGE_KEY)||"[]")}
-function save(list){localStorage.setItem(STORAGE_KEY,JSON.stringify(list))}
+  <footer>
+    © <span id="year"></span> Roblox GFX Studio — Dark • Clean • Fast
+  </footer>
 
-// Tabs
-document.querySelectorAll(".tab").forEach(tab=>{
-  tab.onclick=()=>{
-    document.querySelectorAll(".tab").forEach(t=>t.classList.remove("active"));
-    tab.classList.add("active");
-    ["order","status","admin"].forEach(id=>document.getElementById(id).hidden=(id!==tab.dataset.tab))
-  }
-});
-document.querySelector(".tab[data-tab='order']").click()
+  <script type="module">
+    // =============================
+    // Firebase v9 Modular CDN setup
+    // =============================
+    import { initializeApp } from 'https://www.gstatic.com/firebasejs/9.22.2/firebase-app.js';
+    import { 
+      getFirestore, collection, addDoc, serverTimestamp, onSnapshot,
+      query, where, getDocs, orderBy, limit, startAfter,
+      updateDoc, deleteDoc, doc
+    } from 'https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore.js';
+    import {
+      getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut
+    } from 'https://www.gstatic.com/firebasejs/9.22.2/firebase-auth.js';
+    import {
+      getStorage, ref as sRef, uploadBytesResumable, getDownloadURL, deleteObject
+    } from 'https://www.gstatic.com/firebasejs/9.22.2/firebase-storage.js';
 
-// Submit order
-document.getElementById("btnSubmit").onclick=()=>{
-  const u=document.getElementById("orderUser").value.trim();
-  const n=document.getElementById("orderNotes").value.trim();
-  if(!u){alert("Username required");return}
-  const list=load()
-  list.push({user:u,notes:n,status:"Pending",adminNotes:""})
-  save(list)
-  document.getElementById("orderMsg").innerText="✅ Order confirmed!";
-  document.getElementById("orderMsg").hidden=false
-  document.getElementById("orderUser").value="";
-  document.getElementById("orderNotes").value="";
-}
+    const firebaseConfig = {
+      apiKey: "AIzaSyB0yVNKniHEQHk19PzHJhpt42DmfoEAPFk",
+      authDomain: "gfxstudio-6d814.firebaseapp.com",
+      projectId: "gfxstudio-6d814",
+      storageBucket: "gfxstudio-6d814.firebasestorage.app",
+      messagingSenderId: "4413238835",
+      appId: "1:44132388353:web:f3647cf007ecbe24c1ba00",
+      mesuarementId: "G-TNWLZZTKTW"
+    };
 
-// Check status
-document.getElementById("btnCheck").onclick=()=>{
-  const u=document.getElementById("statusUser").value.trim();
-  const list=load()
-  const order=list.find(o=>o.user.toLowerCase()===u.toLowerCase())
-  const res=document.getElementById("statusResult")
-  if(order){
-    res.innerHTML=`<strong>Status:</strong> ${order.status}<br>
-    <strong>Admin Notes:</strong> ${order.adminNotes||"(none)"}`
-  } else {
-    res.innerText="No order found."
-  }
-  res.hidden=false
-}
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+    const auth = getAuth(app);
+    const storage = getStorage(app);
 
-// Admin login
-document.getElementById("btnAdminLogin").onclick=()=>{
-  if(document.getElementById("adminPin").value===ADMIN_PIN){
-    document.getElementById("adminLogin").hidden=true
-    document.getElementById("adminBody").hidden=false
-    renderAdmin()
-  } else alert("Wrong PIN")
-}
+    const ORDERS = collection(db, 'orders');
 
-// Render admin table
-function renderAdmin(){
-  const body=document.getElementById("ordersBody"); body.innerHTML=""
-  const list=load()
-  if(!list.length){body.innerHTML="<tr><td colspan=6>No orders yet</td></tr>";return}
-  list.forEach((o,i)=>{
-    const tr=document.createElement("tr")
-    tr.innerHTML=`
-      <td>${o.user}</td>
-      <td>${o.notes||""}</td>
-      <td><input class="status-box" data-i="${i}" value="${o.status}"></td>
-      <td><textarea class="notes-box" data-i="${i}">${o.adminNotes||""}</textarea></td>
-      <td><button class="primary save" data-i="${i}">Save</button></td>
-      <td><button class="danger del" data-i="${i}">Delete</button></td>`
-    body.appendChild(tr)
-  })
-}
+    // =============================
+    // Simple Router
+    // =============================
+    const view = document.getElementById('view');
+    const yearEl = document.getElementById('year');
+    yearEl.textContent = new Date().getFullYear();
 
-// Admin actions
-document.getElementById("ordersBody").onclick=e=>{
-  const i=e.target.dataset.i
-  if(i===undefined) return
-  const list=load()
-  if(e.target.classList.contains("save")){
-    const status=document.querySelector(`.status-box[data-i='${i}']`).value
-    const notes=document.querySelector(`.notes-box[data-i='${i}']`).value
-    list[i].status=status
-    list[i].adminNotes=notes
-    save(list);renderAdmin()
-  }
-  if(e.target.classList.contains("del")){
-    list.splice(i,1)
-    save(list);renderAdmin()
-  }
-}
-document.getElementById("btnClear").onclick=()=>{
-  if(confirm("Clear all orders?")){
-    localStorage.removeItem(STORAGE_KEY)
-    renderAdmin()
-  }
-}
-</script>
+    const routes = {
+      '#/home': renderHome,
+      '#/order': renderOrder,
+      '#/status': renderStatus,
+      '#/gallery': renderGallery,
+      '#/faq': renderFAQ,
+      '#/admin': renderAdmin
+    };
+
+    function navigate(hash) {
+      if (!hash) hash = '#/home';
+      if (!routes[hash]) hash = '#/home';
+      window.location.hash = hash;
+      render();
+    }
+
+    function setActiveNav(hash) {
+      document.querySelectorAll('.nav a').forEach(a => {
+        if (a.getAttribute('href') === hash) a.classList.add('active');
+        else a.classList.remove('active');
+      });
+    }
+
+    window.addEventListener('hashchange', render);
+    document.getElementById('btnGlobalSearch').onclick = () => doGlobalSearch();
+    document.getElementById('globalSearch').addEventListener('keydown', (e)=>{
+      if (e.key === 'Enter') doGlobalSearch();
+    });
+
+    function doGlobalSearch(){
+      const q = document.getElementById('globalSearch').value.trim();
+      if (!q) return navigate('#/status');
+      navigate(`#/status?u=${encodeURIComponent(q)}`);
+    }
+
+    async function render(){
+      const hash = window.location.hash || '#/home';
+      setActiveNav(hash.split('?')[0]);
+      await routes[hash.split('?')[0]]();
+    }
+
+    // =============================
+    // Utilities
+    // =============================
+    const $ = (sel, el=document) => el.querySelector(sel);
+    const $$ = (sel, el=document) => [...el.querySelectorAll(sel)];
+    const fmt = (d) => d?.toLocaleString?.() ?? '';
+    const esc = (s='') => s.replace(/[&<>"]+/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]));
+
+    // =============================
+    // Home View
+    // =============================
+    function renderHome(){
+      view.innerHTML = `
+        <section class="hero">
+          <div class="card">
+            <h1 class="headline"> Roblox GFX's, done right.</h1>
+            <p class="subhead">Submit your order, track live status, and browse finished work in the gallery. Admins get a realtime dashboard with uploads straight to you.</p>
+            <div class="cta">
+              <a class="btn primary" href="#/order">Start an Order</a>
+              <a class="btn ghost" href="#/status">Check Status</a>
+            </div>
+          </div>
+          <div class="card panel">
+            <h2>Latest Drops</h2>
+            <div id="homeGallery" class="gallery" style="margin-top:12px"></div>
+          </div>
+        </section>
+      `;
+      // load latest 6 published
+      (async ()=>{
+        const qy = query(ORDERS, where('published','==',true), orderBy('createdAt','desc'), limit(6));
+        const snap = await getDocs(qy);
+        const host = $('#homeGallery');
+        if (snap.empty){ host.innerHTML = '<div class="help">Nothing here yet. Check back soon.</div>'; return; }
+        let html = '';
+        snap.forEach(d => {
+          const o = d.data();
+          if (!o.gfxUrl) return;
+          html += `<a class="thumb" href="#/status?u=${encodeURIComponent(o.user)}" title="${esc(o.user)}">
+                     <img src="${esc(o.gfxUrl)}" alt="${esc(o.user)}" />
+                     <span class="badge">${esc(o.user)}</span>
+                   </a>`;
+        });
+        host.innerHTML = html || '<div class="help">No images yet.</div>';
+      })();
+    }
+
+    // =============================
+    // Order View
+    // =============================
+    function renderOrder(){
+      view.innerHTML = `
+        <div class="card panel">
+          <h2>Confirm Your GFX Order</h2>
+          <label>Roblox Username *</label>
+          <input id="orderUser" placeholder="e.g., Elxexx" />
+          <label>Notes for the artist</label>
+          <textarea id="orderNotes" placeholder="Pose, vibe, outfit, background…"></textarea>
+          <button class="btn primary" id="btnSubmitOrder">Confirm Order</button>
+          <div id="orderMsg" class="notice" style="display:none"></div>
+          <p class="help">We store: username, your notes, and timestamps. No passwords.
+          </p>
+        </div>
+      `;
+      $('#btnSubmitOrder').onclick = submitOrder;
+    }
+
+    async function submitOrder(){
+      const user = $('#orderUser').value.trim();
+      const notes = $('#orderNotes').value.trim().slice(0, 2000);
+      if (!user || user.length < 2) { return alert('Enter a valid username.'); }
+      try {
+        await addDoc(ORDERS, {
+          user,
+          usernameLower: user.toLowerCase(),
+          notes,
+          status: 'Pending',
+          adminNotes: '',
+          gfxUrl: '',
+          storagePath: '',
+          published: false,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp()
+        });
+        $('#orderMsg').style.display = 'block';
+        $('#orderMsg').textContent = '✅ Order received! Use the Status page to track updates.';
+        $('#orderUser').value='';
+        $('#orderNotes').value='';
+      } catch (e){
+        alert('Failed to submit: ' + e.message);
+      }
+    }
+
+    // =============================
+    // Status View (search by username)
+    // =============================
+    async function renderStatus(){
+      const params = new URLSearchParams(location.hash.split('?')[1]||'');
+      const prefill = params.get('u') || '';
+      view.innerHTML = `
+        <div class="card panel">
+          <h2>Check Your Status</h2>
+          <div style="display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center;">
+            <input id="statusUser" placeholder="Enter username…" value="${esc(prefill)}" />
+            <button class="btn primary" id="btnCheck">Check</button>
+          </div>
+          <div id="statusResult" style="margin-top:14px"></div>
+        </div>
+      `;
+      $('#btnCheck').onclick = doStatusLookup;
+      if (prefill) doStatusLookup();
+    }
+
+    async function doStatusLookup(){
+      const u = $('#statusUser').value.trim();
+      const res = $('#statusResult');
+      if (!u) { res.innerHTML = '<div class="help">Type a username.</div>'; return; }
+      try {
+        const qy = query(ORDERS, where('usernameLower','==', u.toLowerCase()), orderBy('createdAt','desc'), limit(10));
+        const snap = await getDocs(qy);
+        if (snap.empty){ res.innerHTML = '<div class="notice">No order found.</div>'; return; }
+        let html = '';
+        snap.forEach(d => {
+          const o = d.data();
+          html += `
+            <div class="card panel" style="margin-top:10px">
+              <div style="display:grid;grid-template-columns:1fr 200px;gap:14px;align-items:start;">
+                <div>
+                  <div><strong>User:</strong> ${esc(o.user)}</div>
+                  <div><strong>Status:</strong> ${esc(o.status)}</div>
+                  <div><strong>Admin Notes:</strong> ${o.adminNotes ? esc(o.adminNotes) : '<span class="help">(none)</span>'}</div>
+                  <div class="help" style="margin-top:8px">Placed: ${fmt(o.createdAt?.toDate?.())}</div>
+                </div>
+                <div>
+                  ${o.gfxUrl ? `<img src="${esc(o.gfxUrl)}" alt="${esc(o.user)}" style="width:100%;height:170px;object-fit:cover;border-radius:12px;border:1px solid rgba(255,255,255,.08)"/>` : `<div class="help">No image yet.</div>`}
+                </div>
+              </div>
+            </div>
+          `;
+        });
+        res.innerHTML = html;
+      } catch(e){ res.innerHTML = `<div class="notice">Error: ${esc(e.message)}</div>`; }
+    }
+
+    // =============================
+    // Gallery View (published only)
+    // =============================
+    async function renderGallery(){
+      view.innerHTML = `
+        <div class="card panel">
+          <h2>Gallery</h2>
+          <div class="gallery" id="gallery"></div>
+        </div>
+      `;
+      const host = $('#gallery');
+      const qy = query(ORDERS, where('published','==',true), orderBy('createdAt','desc'), limit(24));
+      const snap = await getDocs(qy);
+      if (snap.empty){ host.innerHTML = '<div class="help">No published work yet.</div>'; return; }
+      let html = '';
+      snap.forEach(d => {
+        const o = d.data();
+        if (!o.gfxUrl) return;
+        html += `<a class="thumb" href="#/status?u=${encodeURIComponent(o.user)}" title="${esc(o.user)}">
+                   <img src="${esc(o.gfxUrl)}" alt="${esc(o.user)}"/>
+                   <span class="badge">${esc(o.user)}</span>
+                 </a>`;
+      });
+      host.innerHTML = html || '<div class="help">No images yet.</div>';
+    }
+
+    // =============================
+    // FAQ View (static)
+    // =============================
+    function renderFAQ(){
+      view.innerHTML = `
+        <div class="card panel">
+          <h2>FAQ</h2>
+          <p><strong>How long does a GFX take?</strong><br><span class="help">Depends on the queue. You can track your status on the Status page.</span></p>
+          <p><strong>What do I include in notes?</strong><br><span class="help">Outfit, pose, vibe (emo / dark), background, accessories, and any text you want.</span></p>
+          <p><strong>Can I upload my own reference image?</strong><br><span class="help">Yes — we support admin uploads now. Public uploads can be enabled if you want.</span></p>
+        </div>
+      `;
+    }
+
+    // =============================
+    // Admin View
+    // =============================
+    let unsubAdmin = null;
+
+    function renderAdmin(){
+      view.innerHTML = `
+        <div class="card panel">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+            <h2>Admin Dashboard</h2>
+            <div id="adminAuthControls"></div>
+          </div>
+          <div id="adminBody"></div>
+        </div>
+      `;
+      onAuthStateChanged(auth, (user)=>{
+        const authEl = $('#adminAuthControls');
+        if (user){
+          authEl.innerHTML = `<span class="help" style="margin-right:8px">${esc(user.email)}</span>
+                              <button class="btn ghost" id="btnSignOut">Sign out</button>`;
+          $('#btnSignOut').onclick = async()=>{ await signOut(auth); };
+          showAdminTable();
+        } else {
+          if (unsubAdmin) { unsubAdmin(); unsubAdmin = null; }
+          $('#adminBody').innerHTML = `
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+              <div>
+                <label>Email</label>
+                <input id="adminEmail" placeholder="admin@example.com" />
+              </div>
+              <div>
+                <label>Password</label>
+                <input id="adminPass" type="password" placeholder="••••••••" />
+              </div>
+            </div>
+            <button class="btn primary" id="btnSignIn">Sign in</button>
+            <p class="help">Use Firebase Auth → Email/Password. Add your uid to Firestore /admins/{uid} to unlock write access.</p>
+          `;
+          $('#btnSignIn').onclick = async()=>{
+            const email = $('#adminEmail').value.trim();
+            const pass = $('#adminPass').value.trim();
+            try { await signInWithEmailAndPassword(auth, email, pass); }
+            catch(e){ alert(e.message); }
+          };
+        }
+      });
+    }
+
+    function showAdminTable(){
+      const host = $('#adminBody');
+      host.innerHTML = `
+        <div class="card panel" style="margin-top:10px">
+          <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;align-items:end;margin-bottom:10px">
+            <div>
+              <label>Filter by status</label>
+              <input id="fltStatus" placeholder="e.g., Pending" />
+            </div>
+            <div>
+              <label>Search username</label>
+              <input id="fltUser" placeholder="username" />
+            </div>
+            <div>
+              <label>Only published?</label>
+              <select id="fltPub">
+                <option value="">Any</option>
+                <option value="true">Published</option>
+                <option value="false">Unpublished</option>
+              </select>
+            </div>
+            <div>
+              <label>&nbsp;</label>
+              <button class="btn ghost" id="btnApply">Apply</button>
+            </div>
+            <div>
+              <label>&nbsp;</label>
+              <a class="btn primary" href="#/order">New Order</a>
+            </div>
+          </div>
+          <div class="notice">Realtime: updates live as you edit. Uploads save automatically.</div>
+          <div style="overflow:auto">
+            <table class="table" id="ordersTable">
+              <thead>
+                <tr>
+                  <th style="min-width:140px">User</th>
+                  <th style="min-width:180px">User Notes</th>
+                  <th style="min-width:140px">Status (free text)</th>
+                  <th style="min-width:180px">Admin Notes</th>
+                  <th style="min-width:220px">GFX</th>
+                  <th>Publish</th>
+                  <th>Created</th>
+                  <th>Save</th>
+                  <th>Delete</th>
+                </tr>
+              </thead>
+              <tbody id="ordersBody"></tbody>
+            </table>
+          </div>
+        </div>
+      `;
+
+      const apply = ()=>{
+        const s = $('#fltStatus').value.trim();
+        const u = $('#fltUser').value.trim().toLowerCase();
+        const p = $('#fltPub').value;
+
+        if (unsubAdmin) { unsubAdmin(); unsubAdmin = null; }
+
+        // Base query: order by createdAt desc
+        let qy = query(ORDERS, orderBy('createdAt','desc'), limit(50));
+
+        // Client-side filters (works without composite indexes)
+        unsubAdmin = onSnapshot(qy, (snap)=>{
+          const body = $('#ordersBody');
+          body.innerHTML = '';
+          if (snap.empty) { body.innerHTML = '<tr><td colspan="9" class="help">No orders.</td></tr>'; return; }
+          snap.forEach(d => {
+            const o = d.data();
+            if (s && (!o.status || !o.status.toLowerCase().includes(s.toLowerCase()))) return;
+            if (u && o.usernameLower !== u) return;
+            if (p === 'true' && !o.published) return;
+            if (p === 'false' && o.published) return;
+            body.appendChild(renderAdminRow(d.id, o));
+          });
+          if (!body.children.length) body.innerHTML = '<tr><td colspan="9" class="help">No matches for filters.</td></tr>';
+        });
+      };
+
+      $('#btnApply').onclick = apply;
+      apply();
+    }
+
+    function renderAdminRow(id, o){
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td><strong>${esc(o.user)}</strong><div class="help">${o.usernameLower || ''}</div></td>
+        <td><div class="help" style="white-space:pre-wrap">${esc(o.notes || '')}</div></td>
+        <td><input class="status-input" id="st-${id}" value="${esc(o.status||'')}" /></td>
+        <td><textarea class="notes-input" id="an-${id}">${esc(o.adminNotes||'')}</textarea></td>
+        <td>
+          <div style="display:grid;grid-template-columns:80px 1fr;gap:10px;align-items:center">
+            <div>
+              ${o.gfxUrl ? `<img src="${esc(o.gfxUrl)}" alt="gfx" style="width:80px;height:64px;object-fit:cover;border-radius:8px;border:1px solid rgba(255,255,255,.08)"/>` : '<div class="help">no image</div>'}
+            </div>
+            <div>
+              <input class="gfx-input" id="gx-${id}" placeholder="Paste image URL or upload below" value="${esc(o.gfxUrl||'')}" />
+              <div class="progress" style="margin-top:6px"><span id="pg-${id}"></span></div>
+              <div class="row-actions" style="margin-top:8px">
+                <input type="file" id="fu-${id}" accept="image/*" style="display:none" />
+                <button class="btn ghost" data-act="upload" data-id="${id}">Upload</button>
+                ${o.gfxUrl ? `<a class="btn ghost" href="${esc(o.gfxUrl)}" target="_blank">Open</a>` : ''}
+                ${o.storagePath ? `<button class="btn danger" data-act="removeFile" data-id="${id}">Remove</button>` : ''}
+              </div>
+            </div>
+          </div>
+        </td>
+        <td>
+          <label class="help">Visible in Gallery?</label>
+          <input type="checkbox" id="pb-${id}" ${o.published ? 'checked' : ''} />
+        </td>
+        <td class="help">${fmt(o.createdAt?.toDate?.())}</td>
+        <td><button class="btn primary" data-act="save" data-id="${id}">Save</button></td>
+        <td><button class="btn danger" data-act="del" data-id="${id}">Delete</button></td>
+      `;
+
+      // Hook up actions for this row
+      tr.addEventListener('click', async (e)=>{
+        const btn = e.target.closest('button');
+        if (!btn) return;
+        const act = btn.dataset.act;
+        const rid = btn.dataset.id;
+        if (!act || !rid) return;
+        if (act === 'save') {
+          await saveRow(rid);
+        } else if (act === 'del') {
+          if (!confirm('Delete this order?')) return;
+          await deleteDoc(doc(db,'orders',rid));
+        } else if (act === 'upload') {
+          const fu = tr.querySelector(`#fu-${rid}`);
+          fu.onchange = () => handleUpload(rid, fu.files[0]);
+          fu.click();
+        } else if (act === 'removeFile') {
+          await removeFile(rid);
+        }
+      });
+
+      return tr;
+    }
+
+    async function saveRow(id){
+      const st = $(`#st-${id}`).value;
+      const an = $(`#an-${id}`).value;
+      const gx = $(`#gx-${id}`).value;
+      const pb = $(`#pb-${id}`).checked;
+      await updateDoc(doc(db,'orders',id), {
+        status: st,
+        adminNotes: an,
+        gfxUrl: gx,
+        published: pb,
+        updatedAt: serverTimestamp()
+      });
+    }
+
+    async function handleUpload(id, file){
+      if (!file) return;
+      const path = `orders/${id}/${Date.now()}_${file.name.replace(/\s+/g,'_')}`;
+      const ref = sRef(storage, path);
+      const task = uploadBytesResumable(ref, file, { cacheControl: 'public, max-age=31536000' });
+      const bar = $(`#pg-${id}`);
+      task.on('state_changed', (snap)=>{
+        const pct = Math.round((snap.bytesTransferred / snap.totalBytes)*100);
+        bar.style.width = pct + '%';
+      }, (err)=>{
+        alert('Upload error: ' + err.message);
+      }, async ()=>{
+        const url = await getDownloadURL(task.snapshot.ref);
+        await updateDoc(doc(db,'orders',id), { gfxUrl: url, storagePath: path, updatedAt: serverTimestamp() });
+        bar.style.width = '100%';
+      });
+    }
+
+    async function removeFile(id){
+      try{
+        const dref = doc(db,'orders',id);
+        const snap = await getDocs(query(ORDERS, where('__name__','==', id)));
+        let path = '';
+        snap.forEach(s => { path = s.data()?.storagePath || ''; });
+        if (!path) return alert('No stored file to remove.');
+        await deleteObject(sRef(storage, path));
+        await updateDoc(dref, { gfxUrl: '', storagePath: '', updatedAt: serverTimestamp() });
+      } catch(e){ alert('Remove failed: ' + e.message); }
+    }
+
+    // Kick things off
+    navigate(location.hash || '#/home');
+  </script>
 </body>
 </html>
+
