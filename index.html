@@ -1,0 +1,307 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Roblox GFX Orders</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<style>
+:root {
+  --bg: #0d0d11;
+  --card: rgba(255,255,255,0.05);
+  --accent: #1a7cff;
+  --danger: #e74c3c;
+  --text: #f1f1f1;
+  --muted: #aaa;
+  --radius: 14px;
+  --shadow: 0 8px 25px rgba(0,0,0,.4);
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: "Inter", "Segoe UI", sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.5;
+}
+
+header {
+  text-align: center;
+  padding: 30px 15px;
+  background: linear-gradient(120deg, #0f0f18, #121222);
+  box-shadow: var(--shadow);
+}
+header img {
+  max-width: 220px;
+  border-radius: var(--radius);
+  margin: 10px;
+  box-shadow: 0 5px 20px rgba(0,0,0,.6);
+  transition: transform .3s ease;
+}
+header img:hover { transform: scale(1.03); }
+
+.wrap {
+  max-width: 1000px;
+  margin: auto;
+  padding: 25px;
+}
+
+/* Tabs */
+.nav {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 25px;
+  justify-content: center;
+}
+.tab {
+  padding: 12px 20px;
+  background: var(--card);
+  border-radius: var(--radius);
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--muted);
+  transition: all .25s ease;
+  backdrop-filter: blur(6px);
+}
+.tab:hover { color: var(--text); background: rgba(255,255,255,.1); }
+.tab.active { background: var(--accent); color: #fff; box-shadow: var(--shadow); }
+
+/* Panels */
+.panel {
+  background: var(--card);
+  padding: 25px;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(12px);
+  animation: fadeIn .4s ease;
+}
+@keyframes fadeIn { from{opacity:0; transform:translateY(8px)} to{opacity:1; transform:translateY(0)} }
+
+h2 { margin-top: 0; font-weight: 700; }
+
+/* Inputs */
+label { display: block; margin: 15px 0 6px; font-weight: 500; }
+input, textarea {
+  width: 100%;
+  padding: 12px;
+  border-radius: var(--radius);
+  border: none;
+  background: rgba(255,255,255,.07);
+  color: var(--text);
+  font-size: 15px;
+  transition: background .2s;
+}
+input:focus, textarea:focus { background: rgba(255,255,255,.12); outline: none; }
+
+textarea { min-height: 80px; resize: vertical; }
+
+/* Buttons */
+button {
+  margin-top: 12px;
+  padding: 12px 20px;
+  border: none;
+  border-radius: var(--radius);
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform .15s ease, background .2s;
+}
+button:hover { transform: translateY(-2px); }
+.primary { background: var(--accent); color: #fff; }
+.danger { background: var(--danger); color: #fff; }
+
+/* Notice */
+.notice {
+  margin-top: 15px;
+  padding: 12px;
+  border-radius: var(--radius);
+  background: rgba(255,255,255,.08);
+  font-size: 15px;
+  line-height: 1.4;
+}
+
+/* Table */
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 15px;
+}
+.table th, .table td {
+  padding: 12px;
+  border-bottom: 1px solid rgba(255,255,255,.08);
+  vertical-align: top;
+  font-size: 14px;
+}
+.table th { text-align: left; color: var(--muted); font-weight: 500; }
+.table td input, .table td textarea {
+  font-size: 14px;
+  padding: 8px;
+  border-radius: 8px;
+}
+.table tr:hover td { background: rgba(255,255,255,.04); }
+
+/* Admin boxes */
+.status-box, .notes-box {
+  width: 100%;
+  background: rgba(255,255,255,.07);
+  border: none;
+  border-radius: 8px;
+  color: var(--text);
+}
+</style>
+</head>
+<body>
+<header>
+  <img src="data:image/jpeg;base64,PUT_FIRST_BASE64_HERE" alt="gfx1">
+  <img src="data:image/jpeg;base64,PUT_SECOND_BASE64_HERE" alt="gfx2">
+</header>
+
+<div class="wrap">
+  <div class="nav">
+    <div class="tab" data-tab="order">Confirm Order</div>
+    <div class="tab" data-tab="status">Check Status</div>
+    <div class="tab" data-tab="admin">Admin</div>
+  </div>
+
+  <!-- Order -->
+  <div id="order" class="panel">
+    <h2>Confirm Your GFX Order</h2>
+    <label>Roblox Username *</label>
+    <input id="orderUser">
+    <label>Notes</label>
+    <textarea id="orderNotes"></textarea>
+    <button class="primary" id="btnSubmit">Confirm Order</button>
+    <div id="orderMsg" class="notice" hidden></div>
+  </div>
+
+  <!-- Status -->
+  <div id="status" class="panel" hidden>
+    <h2>Check Your Status</h2>
+    <label>Roblox Username</label>
+    <input id="statusUser">
+    <button class="primary" id="btnCheck">Check</button>
+    <div id="statusResult" class="notice" hidden></div>
+  </div>
+
+  <!-- Admin -->
+  <div id="admin" class="panel" hidden>
+    <h2>Admin Panel</h2>
+    <div id="adminLogin">
+      <label>Enter PIN</label>
+      <input type="password" id="adminPin">
+      <button class="primary" id="btnAdminLogin">Unlock</button>
+    </div>
+    <div id="adminBody" hidden>
+      <button class="danger" id="btnClear">Clear All</button>
+      <table class="table">
+        <thead>
+          <tr>
+            <th>User</th><th>User Notes</th><th>Status</th>
+            <th>Admin Notes</th><th>Save</th><th>Delete</th>
+          </tr>
+        </thead>
+        <tbody id="ordersBody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+const STORAGE_KEY="gfx_orders";
+const ADMIN_PIN="admin123"; // change this
+
+function load(){return JSON.parse(localStorage.getItem(STORAGE_KEY)||"[]")}
+function save(list){localStorage.setItem(STORAGE_KEY,JSON.stringify(list))}
+
+// Tabs
+document.querySelectorAll(".tab").forEach(tab=>{
+  tab.onclick=()=>{
+    document.querySelectorAll(".tab").forEach(t=>t.classList.remove("active"));
+    tab.classList.add("active");
+    ["order","status","admin"].forEach(id=>document.getElementById(id).hidden=(id!==tab.dataset.tab))
+  }
+});
+document.querySelector(".tab[data-tab='order']").click()
+
+// Submit order
+document.getElementById("btnSubmit").onclick=()=>{
+  const u=document.getElementById("orderUser").value.trim();
+  const n=document.getElementById("orderNotes").value.trim();
+  if(!u){alert("Username required");return}
+  const list=load()
+  list.push({user:u,notes:n,status:"Pending",adminNotes:""})
+  save(list)
+  document.getElementById("orderMsg").innerText="✅ Order confirmed!";
+  document.getElementById("orderMsg").hidden=false
+  document.getElementById("orderUser").value="";
+  document.getElementById("orderNotes").value="";
+}
+
+// Check status
+document.getElementById("btnCheck").onclick=()=>{
+  const u=document.getElementById("statusUser").value.trim();
+  const list=load()
+  const order=list.find(o=>o.user.toLowerCase()===u.toLowerCase())
+  const res=document.getElementById("statusResult")
+  if(order){
+    res.innerHTML=`<strong>Status:</strong> ${order.status}<br>
+    <strong>Admin Notes:</strong> ${order.adminNotes||"(none)"}`
+  } else {
+    res.innerText="No order found."
+  }
+  res.hidden=false
+}
+
+// Admin login
+document.getElementById("btnAdminLogin").onclick=()=>{
+  if(document.getElementById("adminPin").value===ADMIN_PIN){
+    document.getElementById("adminLogin").hidden=true
+    document.getElementById("adminBody").hidden=false
+    renderAdmin()
+  } else alert("Wrong PIN")
+}
+
+// Render admin table
+function renderAdmin(){
+  const body=document.getElementById("ordersBody"); body.innerHTML=""
+  const list=load()
+  if(!list.length){body.innerHTML="<tr><td colspan=6>No orders yet</td></tr>";return}
+  list.forEach((o,i)=>{
+    const tr=document.createElement("tr")
+    tr.innerHTML=`
+      <td>${o.user}</td>
+      <td>${o.notes||""}</td>
+      <td><input class="status-box" data-i="${i}" value="${o.status}"></td>
+      <td><textarea class="notes-box" data-i="${i}">${o.adminNotes||""}</textarea></td>
+      <td><button class="primary save" data-i="${i}">Save</button></td>
+      <td><button class="danger del" data-i="${i}">Delete</button></td>`
+    body.appendChild(tr)
+  })
+}
+
+// Admin actions
+document.getElementById("ordersBody").onclick=e=>{
+  const i=e.target.dataset.i
+  if(i===undefined) return
+  const list=load()
+  if(e.target.classList.contains("save")){
+    const status=document.querySelector(`.status-box[data-i='${i}']`).value
+    const notes=document.querySelector(`.notes-box[data-i='${i}']`).value
+    list[i].status=status
+    list[i].adminNotes=notes
+    save(list);renderAdmin()
+  }
+  if(e.target.classList.contains("del")){
+    list.splice(i,1)
+    save(list);renderAdmin()
+  }
+}
+document.getElementById("btnClear").onclick=()=>{
+  if(confirm("Clear all orders?")){
+    localStorage.removeItem(STORAGE_KEY)
+    renderAdmin()
+  }
+}
+</script>
+</body>
+</html>
